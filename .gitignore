@@ -1,6 +1,11 @@
 # Ignore project archive folder
 archive/
 
+# Ignore dataset and generated files
+data/
+# models/
+# results/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
