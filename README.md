@@ -1,2 +1,3 @@
-# generative-ai-vae-dcgan
-Implementation of convolutional VAE and DCGAN generative models on CIFAR-10, with comparative analysis of training accuracy, time complexity, MSE/SSIM for generated images, and performance graphs.
+# VAE and DCGAN for CIFAR-10# Generative AI: VAE and DCGAN Implementation
+
+Early implementation. It needs some polishing and documentation. Commiting early to move to GPU-accelerated training environment.
