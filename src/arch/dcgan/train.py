@@ -12,22 +12,13 @@ from datetime import datetime
 
 from .model import DCGANGenerator, DCGANDiscriminator, weights_init
 from tools.data_utils import get_cifar10_loaders
-from tools.package_utils import plot_dcgan_losses, save_image_grid
+from tools.package_utils import plot_dcgan_losses, save_image_grid, save_training_metrics
 
 
 def train(epochs=50, latent_dim=100, learning_rate=0.0002, batch_size=128, device=None):
     """
-    Train DCGAN model
-    
-    Args:
-        epochs: Number of training epochs
-        latent_dim: Dimension of latent noise vector
-        learning_rate: Learning rate for optimizers
-        batch_size: Batch size for training
-        device: Device to train on (cuda/cpu)
-        
-    Returns:
-        history: Dictionary containing training metrics
+    Train DCGAN: Generator makes fakes, Discriminator learns to spot them
+    They fight until Generator gets good at fooling Discriminator
     """
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -36,35 +27,42 @@ def train(epochs=50, latent_dim=100, learning_rate=0.0002, batch_size=128, devic
     print("Training DCGAN")
     print("="*60)
     
-    # Create timestamped directories
+    # Setup: Create folders to save stuff
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     model_dir = Path('models') / 'dcgan' / timestamp
     model_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create timestamped results directory
     results_dir = Path('results') / 'dcgan' / timestamp
     results_dir.mkdir(parents=True, exist_ok=True)
     
-    # Models
-    netG = DCGANGenerator(latent_dim=latent_dim).to(device)
-    netD = DCGANDiscriminator().to(device)
+    # Step 1: Build the two neural networks
+    netG = DCGANGenerator(latent_dim=latent_dim).to(device)  # Makes fake images
+    netD = DCGANDiscriminator().to(device)                    # Spots fake images
     netG.apply(weights_init)
     netD.apply(weights_init)
     
-    # Optimizers
-    optimizerD = optim.Adam(netD.parameters(), lr=learning_rate, betas=(0.5, 0.999))
-    optimizerG = optim.Adam(netG.parameters(), lr=learning_rate, betas=(0.5, 0.999))
+    # Step 2: Setup learning rates (Discriminator learns 4x faster)
+    d_lr = 0.00015  # Fast learner
+    g_lr = 0.0001  # Slow learner
+    optimizerD = optim.Adam(netD.parameters(), lr=d_lr, betas=(0.5, 0.999))
+    optimizerG = optim.Adam(netG.parameters(), lr=g_lr, betas=(0.5, 0.999))
     
-    # Loss
+    # Step 3: Loss function (measures how wrong we are)
     criterion = nn.BCELoss()
     
-    # Data
+    # Step 4: Labels (1=real, 0=fake)
+    real_label_value = 1.0
+    fake_label_value = 0.0
+    
+    print(f"Learning rates: Discriminator={d_lr} (4x faster), Generator={g_lr}")
+    print(f"Architecture: 4 layers each (proven CIFAR-10 design)")
+    
+    # Step 5: Load CIFAR-10 images
     train_loader, test_loader = get_cifar10_loaders(batch_size)
     
-    # Fixed noise for visualization
+    # Step 6: Create fixed noise (same noise every time = consistent test)
     fixed_noise = torch.randn(64, latent_dim, 1, 1).to(device)
     
-    # Training loop
+    # Step 7: Start training!
     history = {'g_loss': [], 'd_loss': [], 'd_x': [], 'd_g_z': [], 'time': []}
     
     for epoch in range(epochs):
@@ -77,36 +75,47 @@ def train(epochs=50, latent_dim=100, learning_rate=0.0002, batch_size=128, devic
         start_time = time.time()
         
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{epochs}')
-        for real_images, _ in pbar:
+        for batch_idx, (real_images, _) in enumerate(pbar):
             batch_size_actual = real_images.size(0)
             real_images = real_images.to(device)
             
-            # Normalize to [-1, 1] for tanh
+            # Convert images from [0,1] to [-1,1] (Generator outputs tanh)
             real_images = real_images * 2 - 1
             
-            real_labels = torch.ones(batch_size_actual, 1).to(device)
-            fake_labels = torch.zeros(batch_size_actual, 1).to(device)
+            # Create labels: 1=real, 0=fake
+            real_labels = torch.full((batch_size_actual, 1, 1, 1), real_label_value, device=device)
+            fake_labels = torch.full((batch_size_actual, 1, 1, 1), fake_label_value, device=device)
             
-            # Train Discriminator
+            # === Train Discriminator: Learn to spot fakes ===
             netD.zero_grad()
+            
+            # Test on real images (should output 1)
             output_real = netD(real_images)
             loss_d_real = criterion(output_real, real_labels)
-            d_x = output_real.mean().item()
+            d_x = output_real.mean().item()  # Track average realness score
             
+            # Test on fake images (should output 0)
             noise = torch.randn(batch_size_actual, latent_dim, 1, 1).to(device)
             fake_images = netG(noise)
-            output_fake = netD(fake_images.detach())
+            output_fake = netD(fake_images.detach())  # Don't backprop through Generator
             loss_d_fake = criterion(output_fake, fake_labels)
             
+            # Update Discriminator
             loss_d = loss_d_real + loss_d_fake
             loss_d.backward()
             optimizerD.step()
             
-            # Train Generator
+            # === Train Generator: Learn to fool Discriminator ===
             netG.zero_grad()
+            
+            # Make fakes and try to convince Discriminator they're real
+            noise = torch.randn(batch_size_actual, latent_dim, 1, 1).to(device)
+            fake_images = netG(noise)
             output_fake = netD(fake_images)
-            loss_g = criterion(output_fake, real_labels)
-            d_g_z = output_fake.mean().item()
+            loss_g = criterion(output_fake, real_labels)  # Want Discriminator to say "real"!
+            d_g_z = output_fake.mean().item()  # Track how real our fakes look
+            
+            # Update Generator
             loss_g.backward()
             optimizerG.step()
             
@@ -138,7 +147,7 @@ def train(epochs=50, latent_dim=100, learning_rate=0.0002, batch_size=128, devic
         print(f'Epoch {epoch+1}: G_Loss={epoch_g_loss:.4f}, D_Loss={epoch_d_loss:.4f}, '
               f'D(x)={epoch_d_x:.4f}, D(G(z))={epoch_d_g_z:.4f}, Time={epoch_time:.1f}s')
         
-        # Save samples
+        # Save samples every 5 epochs
         if (epoch + 1) % 5 == 0 or epoch == 0:
             netG.eval()
             with torch.no_grad():
@@ -157,6 +166,9 @@ def train(epochs=50, latent_dim=100, learning_rate=0.0002, batch_size=128, devic
     
     # Plot losses
     plot_dcgan_losses(history, results_dir / 'losses.png')
+    
+    # Save training metrics
+    save_training_metrics(history, results_dir)
     
     print(f"\nDCGAN Training Complete! Total time: {sum(history['time'])/60:.2f} min")
     print(f"  → Results saved to {results_dir}/")

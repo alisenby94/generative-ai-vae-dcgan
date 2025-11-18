@@ -10,8 +10,8 @@ from tqdm import tqdm
 from datetime import datetime
 
 from .model import VAE, weights_init
-from tools.data_utils import get_cifar10_loaders
-from tools.package_utils import plot_vae_losses, save_image_grid
+from tools.data_utils import get_cifar10_loaders, get_class_samples, CIFAR10_CLASSES
+from tools.package_utils import plot_vae_losses, save_image_grid, save_training_metrics
 
 
 def train(epochs=50, latent_dim=128, learning_rate=0.001, batch_size=128, device=None):
@@ -53,6 +53,12 @@ def train(epochs=50, latent_dim=128, learning_rate=0.001, batch_size=128, device
     
     # Data
     train_loader, test_loader = get_cifar10_loaders(batch_size)
+    
+    # Get class-specific samples for tracking (using 'dog' class, index 5)
+    class_idx = 5  # dog
+    class_name = CIFAR10_CLASSES[class_idx]
+    print(f"Will track class-specific reconstructions for: {class_name}")
+    class_samples = get_class_samples(test_loader.dataset, class_idx, num_samples=64, device=str(device))
     
     # Training loop
     history = {'loss': [], 'recon_loss': [], 'kl_loss': [], 'time': []}
@@ -117,6 +123,12 @@ def train(epochs=50, latent_dim=128, learning_rate=0.001, batch_size=128, device
                 comparison = torch.cat([sample, recon])
                 save_image_grid(comparison, results_dir / f'recon_epoch_{epoch+1}.png', nrow=8)
                 
+                # Class-specific reconstructions (dogs)
+                if class_samples is not None:
+                    class_recon, _, _ = model(class_samples)
+                    class_comparison = torch.cat([class_samples, class_recon])
+                    save_image_grid(class_comparison, results_dir / f'recon_{class_name}_epoch_{epoch+1}.png', nrow=8)
+                
                 # Random samples
                 z = torch.randn(64, latent_dim).to(device)
                 samples = model.decoder(z)
@@ -130,6 +142,9 @@ def train(epochs=50, latent_dim=128, learning_rate=0.001, batch_size=128, device
     
     # Plot losses
     plot_vae_losses(history, results_dir / 'losses.png')
+    
+    # Save training metrics
+    save_training_metrics(history, results_dir)
     
     print(f"\nVAE Training Complete! Total time: {sum(history['time'])/60:.2f} min")
     print(f"  → Results saved to {results_dir}/")

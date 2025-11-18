@@ -10,6 +10,13 @@ from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import mean_squared_error as mse
 
 
+# CIFAR-10 class names
+CIFAR10_CLASSES = [
+    'airplane', 'automobile', 'bird', 'cat', 'deer',
+    'dog', 'frog', 'horse', 'ship', 'truck'
+]
+
+
 def get_cifar10_loaders(batch_size=128, data_root='./data', num_workers=0):
     """
     Load CIFAR-10 dataset and create data loaders
@@ -43,6 +50,31 @@ def get_cifar10_loaders(batch_size=128, data_root='./data', num_workers=0):
     )
     
     return train_loader, test_loader
+
+
+def get_class_samples(dataset, class_idx, num_samples=64, device='cpu'):
+    """
+    Get samples from a specific class
+    
+    Args:
+        dataset: CIFAR-10 dataset
+        class_idx: Class index (0-9)
+        num_samples: Number of samples to get
+        device: Device to move samples to
+        
+    Returns:
+        Tensor of images from the specified class
+    """
+    samples = []
+    for img, label in dataset:
+        if label == class_idx:
+            samples.append(img)
+            if len(samples) >= num_samples:
+                break
+    
+    if samples:
+        return torch.stack(samples).to(device)
+    return None
 
 
 def compute_image_metrics(img1, img2):

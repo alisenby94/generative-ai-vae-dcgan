@@ -9,104 +9,75 @@ import torch.nn as nn
 
 class DCGANGenerator(nn.Module):
     """
-    DCGAN Generator network
-    Maps random noise vectors to images
+    Generator: Makes fake images from random noise
+    Think of it like upscaling a tiny pixel into a full image
     """
     
-    def __init__(self, latent_dim=100, output_channels=3, ngf=64):
-        """
-        Args:
-            latent_dim: Dimension of input noise vector
-            output_channels: Number of output channels (3 for RGB)
-            ngf: Size of feature maps in generator
-        """
+    def __init__(self, latent_dim=100, output_channels=3):
         super(DCGANGenerator, self).__init__()
         self.latent_dim = latent_dim
         
-        # Architecture for 32x32 images
-        # Input: latent_dim x 1 x 1
+        # 4 layers: Start tiny (1x1), grow to full size (32x32)
+        # Each layer DOUBLES the image size and HALVES the features
         self.main = nn.Sequential(
-            # Layer 1: latent_dim -> ngf*4 (4x4)
-            nn.ConvTranspose2d(latent_dim, ngf * 8, kernel_size=4, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # State size: (ngf*8) x 4 x 4
+            # Layer 1: Random noise -> 512 features at 4x4 pixels
+            nn.ConvTranspose2d(latent_dim, 512, kernel_size=4, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
             
-            # Layer 2: ngf*8 -> ngf*4 (8x8)
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # State size: (ngf*4) x 8 x 8
+            # Layer 2: 512 features -> 256 features at 8x8 pixels
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
             
-            # Layer 3: ngf*4 -> ngf*2 (16x16)
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # State size: (ngf*2) x 16 x 16
+            # Layer 3: 256 features -> 128 features at 16x16 pixels
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
             
-            # Layer 4: ngf*2 -> output_channels (32x32)
-            nn.ConvTranspose2d(ngf * 2, output_channels, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.Tanh()
-            # Output size: output_channels x 32 x 32
+            # Layer 4: 128 features -> 3 RGB channels at 32x32 pixels (final image!)
+            nn.ConvTranspose2d(128, output_channels, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Tanh()  # Squish values to [-1, 1]
         )
     
     def forward(self, z):
-        """
-        Args:
-            z: Noise vector of shape (batch_size, latent_dim, 1, 1)
-        Returns:
-            Generated images of shape (batch_size, output_channels, 32, 32)
-        """
+        # z = random noise, output = fake image
         return self.main(z)
 
 
 class DCGANDiscriminator(nn.Module):
     """
-    DCGAN Discriminator network
-    Classifies images as real or fake
+    Discriminator: Detective that spots fake images
+    Think of it like shrinking an image down to a single yes/no decision
     """
     
-    def __init__(self, input_channels=3, ndf=64):
-        """
-        Args:
-            input_channels: Number of input channels (3 for RGB)
-            ndf: Size of feature maps in discriminator
-        """
+    def __init__(self, input_channels=3):
         super(DCGANDiscriminator, self).__init__()
         
-        # Architecture for 32x32 images
-        # Input: input_channels x 32 x 32
+        # 4 layers: Start with full image (32x32), shrink to single number
+        # Each layer HALVES the image size and DOUBLES the features
         self.main = nn.Sequential(
-            # Layer 1: input_channels -> ndf (16x16)
-            nn.Conv2d(input_channels, ndf, kernel_size=4, stride=2, padding=1, bias=False),
+            # Layer 1: RGB image (3 channels) -> 128 features at 16x16 pixels
+            nn.Conv2d(input_channels, 128, kernel_size=4, stride=2, padding=1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # State size: ndf x 16 x 16
             
-            # Layer 2: ndf -> ndf*2 (8x8)
-            nn.Conv2d(ndf, ndf * 2, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
+            # Layer 2: 128 features -> 256 features at 8x8 pixels
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2, inplace=True),
-            # State size: (ndf*2) x 8 x 8
             
-            # Layer 3: ndf*2 -> ndf*4 (4x4)
-            nn.Conv2d(ndf * 2, ndf * 4, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
+            # Layer 3: 256 features -> 512 features at 4x4 pixels
+            nn.Conv2d(256, 512, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(512),
             nn.LeakyReLU(0.2, inplace=True),
-            # State size: (ndf*4) x 4 x 4
             
-            # Layer 4: ndf*4 -> 1 (1x1)
-            nn.Conv2d(ndf * 4, 1, kernel_size=4, stride=1, padding=0, bias=False),
-            nn.Sigmoid()
-            # Output size: 1 x 1 x 1
+            # Layer 4: 512 features -> 1 number (real=1, fake=0)
+            nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=0, bias=False),
+            nn.Sigmoid()  # Squish to 0-1 probability
         )
     
     def forward(self, x):
-        """
-        Args:
-            x: Input images of shape (batch_size, input_channels, 32, 32)
-        Returns:
-            Probability of being real (batch_size, 1, 1, 1)
-        """
+        # x = image, output = realness score (0=fake, 1=real)
         return self.main(x)
 
 
@@ -115,21 +86,19 @@ class DCGAN:
     DCGAN wrapper class containing both Generator and Discriminator
     """
     
-    def __init__(self, latent_dim=100, channels=3, ngf=64, ndf=64, device='cuda'):
+    def __init__(self, latent_dim=100, channels=3, device='cuda'):
         """
         Args:
-            latent_dim: Dimension of latent noise vector
-            channels: Number of image channels
-            ngf: Generator feature map size
-            ndf: Discriminator feature map size
-            device: Device to run on
+            latent_dim: Size of random noise input (default: 100)
+            channels: Number of image channels (3 for RGB)
+            device: 'cuda' for GPU or 'cpu'
         """
         self.latent_dim = latent_dim
         self.device = device
         
         # Create generator and discriminator
-        self.generator = DCGANGenerator(latent_dim, channels, ngf).to(device)
-        self.discriminator = DCGANDiscriminator(channels, ndf).to(device)
+        self.generator = DCGANGenerator(latent_dim, channels).to(device)
+        self.discriminator = DCGANDiscriminator(channels).to(device)
         
         # Initialize weights
         self.generator.apply(weights_init)

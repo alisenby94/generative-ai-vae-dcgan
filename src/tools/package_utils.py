@@ -145,6 +145,44 @@ def plot_dcgan_losses(history, save_path):
     plt.close()
 
 
+def save_training_metrics(history, save_dir):
+    """
+    Save training metrics to JSON and CSV files for reporting
+    
+    Args:
+        history: Dictionary containing training metrics
+        save_dir: Directory to save the metrics files
+    """
+    import json
+    import csv
+    from pathlib import Path
+    
+    save_dir = Path(save_dir)
+    
+    # Save as JSON
+    json_path = save_dir / 'training_metrics.json'
+    with open(json_path, 'w') as f:
+        json.dump(history, f, indent=2)
+    print(f"  → Metrics saved to {json_path}")
+    
+    # Save as CSV for easy analysis in Excel/Pandas
+    csv_path = save_dir / 'training_metrics.csv'
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        
+        # Write header
+        writer.writerow(['epoch'] + list(history.keys()))
+        
+        # Write data rows
+        num_epochs = len(history[list(history.keys())[0]])
+        for epoch in range(num_epochs):
+            row = [epoch + 1]
+            for key in history.keys():
+                row.append(history[key][epoch])
+            writer.writerow(row)
+    print(f"  → Metrics saved to {csv_path}")
+
+
 def save_image_grid(images, save_path, nrow=8):
     """
     Save a grid of images
